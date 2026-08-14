@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Testing
+tests/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Logs (will be created at runtime)
+logs/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+
+# Env files (secrets are injected via Render dashboard, not baked into image)
+.env
+.env.*
+
+# Docs
+*.md
+
+# Misc
+*.bak
+*.tmp

@@ -1,0 +1,88 @@
+# === Environment & Secrets ===
+.env
+.env.local
+.env.*.local
+.env.production
+.env.production.*
+*.pem
+*.key
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+tests/
+backend/tests/
+backend/blackbox_trace_report.json
+
+# === Node.js ===
+node_modules/
+.next/
+out/
+.nuxt/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# === IDE & Editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# === Testing ===
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+backend/supabase/setup_pg_cron.sql
+# === Logs ===
+*.log
+backend/logs/
+frontend/logs/
+
+# === Docker ===
+docker-compose.override.yml
+
+# === Database ===
+*.sqlite3
+*.db
+
+# === Deploy & CI ===
+.vercel/
+.turbo/
+
+# === Antigravity / Gemini IDE ===
+.agents/
+.gemini/
+
+# === Internal Docs ===
+doc/
+Status.md
+
+# === Misc ===
+*.bak
+*.tmp
+firebase-credentials.json
+
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+frontend/tsconfig.tsbuildinfo

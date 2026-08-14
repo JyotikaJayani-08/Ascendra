@@ -1,0 +1,51 @@
+# === Web Framework ===
+fastapi[standard]==0.115.12
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20
+
+# === Database ===
+sqlalchemy[asyncio]==2.0.41
+asyncpg==0.30.0
+alembic==1.15.2
+greenlet==3.2.3
+
+# === Authentication ===
+PyJWT[crypto]~=2.9.0
+argon2-cffi==23.1.0
+
+# === Validation & Settings ===
+pydantic==2.11.4
+pydantic-settings==2.9.1
+python-dotenv==1.0.1
+email-validator==2.2.0
+
+# === Background Tasks ===
+celery[redis]==5.5.2
+redis==5.3.0
+asgiref==3.8.1
+
+# === AI Provider ===
+google-genai==1.16.1
+groq==0.11.0
+
+# === Storage ===
+supabase==2.15.2
+
+# === Email ===
+aiosmtplib==3.0.2
+
+# === PDF Processing ===
+pymupdf==1.25.5
+
+# === HTTP Client & Requests ===
+httpx==0.28.1
+requests>=2.33.0,<3.0.0
+
+# === Testing ===
+pytest==8.3.4
+pytest-asyncio==0.24.0
+
+# === Utilities ===
+python-dateutil==2.9.0
+slowapi==0.1.9
+blackbox-recorder

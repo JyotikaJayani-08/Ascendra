@@ -1,0 +1,217 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Option 1: Emerald Growth & Teal Clarity Theme */
+  --bg-gradient-start: #F4FBF7;
+  --bg-gradient-mid: #E6F4ED;
+  --bg-gradient-end: #F0FDFA;
+  
+  --primary: #059669; /* Emerald 600 */
+  --primary-hover: #047857; /* Emerald 700 */
+  --primary-light: #D1FAE5; /* Emerald 100 */
+  
+  --secondary: #0D9488; /* Teal 600 */
+  --secondary-hover: #0F766E;
+  
+  --accent: #10B981; /* Emerald 500 */
+  
+  --surface: rgba(255, 255, 255, 0.85);
+  --surface-border: rgba(167, 243, 208, 0.6);
+  
+  --shadow-soft: 0 10px 30px -5px rgba(5, 150, 105, 0.08);
+}
+
+@layer utilities {
+  .bg-app-gradient {
+    background: linear-gradient(
+      135deg,
+      #F4FBF7 0%,
+      #E6F4ED 35%,
+      #F0FDFA 70%,
+      #ECFDF5 100%
+    );
+    background-size: 300% 300%;
+  }
+
+  .animated-bg {
+    animation: gradientShift 18s ease infinite;
+  }
+
+  .glass-card {
+    background: var(--surface);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--surface-border);
+    border-radius: 1.25rem;
+    box-shadow: var(--shadow-soft);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .glass-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 20px 35px -10px rgba(5, 150, 105, 0.15);
+    border-color: rgba(5, 150, 105, 0.4);
+  }
+  
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(167, 243, 208, 0.8);
+    border-radius: 1.5rem;
+    box-shadow: 0 12px 40px -10px rgba(5, 150, 105, 0.09);
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #059669 0%, #0D9488 100%);
+    color: white;
+    padding: 0.65rem 1.6rem;
+    border-radius: 0.85rem;
+    font-weight: 600;
+    transition: all 0.25s ease;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 14px 0 rgba(5, 150, 105, 0.35);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px) scale(1.02);
+    box-shadow: 0 8px 25px 0 rgba(5, 150, 105, 0.45);
+    background: linear-gradient(135deg, #047857 0%, #0F766E 100%);
+  }
+
+  .btn-secondary {
+    background: white;
+    color: #059669;
+    border: 1.5px solid #A7F3D0;
+    padding: 0.65rem 1.6rem;
+    border-radius: 0.85rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+  }
+
+  .btn-secondary:hover {
+    background: #ECFDF5;
+    border-color: #6EE7B7;
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spinReverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes shimmerBar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-8px) scale(1.02);
+  }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 6s linear infinite;
+}
+
+.animate-spin-reverse {
+  animation: spinReverse 4s linear infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+.animate-shimmer-bar {
+  animation: shimmerBar 1.8s ease-in-out infinite;
+}
+
+.animate-float-slow {
+  animation: floatSlow 4s ease-in-out infinite;
+}
+
+@keyframes dashOffset {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dashoffset: 160;
+  }
+  100% {
+    stroke-dashoffset: 360;
+  }
+}
+
+@keyframes orbitSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes breatheSoft {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 8px 18px rgba(5, 150, 105, 0.28));
+  }
+  50% {
+    transform: scale(1.06);
+    filter: drop-shadow(0 14px 28px rgba(16, 185, 129, 0.45));
+  }
+}
+
+.animate-dash-flow {
+  animation: dashOffset 4s ease-in-out infinite;
+}
+
+.animate-orbit-spin {
+  animation: orbitSpin 3.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+.animate-orbit-spin-reverse {
+  animation: spinReverse 2.6s linear infinite;
+}
+
+.animate-breathe {
+  animation: breatheSoft 3s ease-in-out infinite;
+}
+
+body {
+  color: #064E3B;
+}
