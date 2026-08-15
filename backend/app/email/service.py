@@ -140,7 +140,18 @@ class EmailService:
         if message.status not in (MessageStatus.APPROVED, MessageStatus.SCHEDULED):
             raise InvalidStateTransition(message.status, MessageStatus.SCHEDULED)
 
-        if scheduled_at <= datetime.now(timezone.utc):
+        # Ensure scheduled_at is timezone-aware (treat naive as UTC)
+        if scheduled_at.tzinfo is None:
+            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+
+        now_utc = datetime.now(timezone.utc)
+        logger.info(
+            f"Schedule check: scheduled_at={scheduled_at.isoformat()} "
+            f"now_utc={now_utc.isoformat()} "
+            f"is_past={scheduled_at <= now_utc}"
+        )
+
+        if scheduled_at <= now_utc:
             # If scheduled time is in the past or now, queue immediately
             message.status = MessageStatus.QUEUED
             message.scheduled_at = None
@@ -170,7 +181,18 @@ class EmailService:
         if message.status != MessageStatus.SCHEDULED:
             raise InvalidStateTransition(message.status, MessageStatus.SCHEDULED)
 
-        if scheduled_at <= datetime.now(timezone.utc):
+        # Ensure scheduled_at is timezone-aware (treat naive as UTC)
+        if scheduled_at.tzinfo is None:
+            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+
+        now_utc = datetime.now(timezone.utc)
+        logger.info(
+            f"Reschedule check: scheduled_at={scheduled_at.isoformat()} "
+            f"now_utc={now_utc.isoformat()} "
+            f"is_past={scheduled_at <= now_utc}"
+        )
+
+        if scheduled_at <= now_utc:
             message.status = MessageStatus.QUEUED
             message.scheduled_at = None
             await db.commit()
