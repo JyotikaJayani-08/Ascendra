@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Send, Loader2, Search, User, Mail, Link as LinkIcon, Building2, Wand2, X, Sparkles, AlertTriangle, Settings, Edit3, RotateCcw, Paperclip } from 'lucide-react';
+import { Send, Loader2, Search, User, Mail, Link as LinkIcon, Building2, Wand2, X, Sparkles, AlertTriangle, Settings, Edit3, RotateCcw, Paperclip, Clock, CalendarClock, XCircle } from 'lucide-react';
 import { fetchApi } from '@/lib/api';
 import LinkifiedText from '@/components/common/LinkifiedText';
 import Link from 'next/link';
@@ -30,7 +30,7 @@ export default function OutreachPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'applications' | 'contacts' | 'followups'>('applications');
+  const [activeTab, setActiveTab] = useState<'applications' | 'contacts' | 'followups' | 'scheduled'>('applications');
 
   // Email credentials check: 'loading' | 'configured' | 'unverified' | 'none'
   const [emailConfigStatus, setEmailConfigStatus] = useState<'loading' | 'configured' | 'unverified' | 'none'>('loading');
@@ -69,6 +69,19 @@ export default function OutreachPage() {
   // Conversations list for follow-up tab
   const [conversations, setConversations] = useState<any[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
+
+  // Scheduled sending state
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [scheduledDateTime, setScheduledDateTime] = useState('');
+  const [scheduledMessages, setScheduledMessages] = useState<any[]>([]);
+  const [scheduledMessagesLoading, setScheduledMessagesLoading] = useState(false);
+  const [scheduleActionLoading, setScheduleActionLoading] = useState<string | null>(null);
+  const [rescheduleId, setRescheduleId] = useState<string | null>(null);
+  const [rescheduleDateTime, setRescheduleDateTime] = useState('');
+
+  // Follow-up schedule picker state
+  const [showFollowUpSchedulePicker, setShowFollowUpSchedulePicker] = useState(false);
+  const [followUpScheduledDateTime, setFollowUpScheduledDateTime] = useState('');
 
   useEffect(() => {
     loadData();
@@ -126,6 +139,8 @@ export default function OutreachPage() {
     setAiResult(null);
     setSendSuccess(null);
     setSelectedResumeId('auto');
+    setShowSchedulePicker(false);
+    setScheduledDateTime('');
     
     // Find contacts whose email domain matches the company name
     const companyName = (app.company_name_snapshot || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -289,6 +304,176 @@ export default function OutreachPage() {
     }
   };
 
+  // ── Scheduled Sending Handlers ────────────────────────────
+
+  const getMinScheduleDateTime = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 5);
+    return now.toISOString().slice(0, 16);
+  };
+
+  const loadScheduledMessages = async () => {
+    setScheduledMessagesLoading(true);
+    try {
+      const convos = await fetchApi('/conversations');
+      const convoList = Array.isArray(convos) ? convos : [];
+      const allScheduled: any[] = [];
+      for (const conv of convoList) {
+        try {
+          const messages = await fetchApi(`/conversations/${conv.id}/messages`);
+          const msgList = Array.isArray(messages) ? messages : [];
+          for (const msg of msgList) {
+            if (msg.status === 'SCHEDULED') {
+              allScheduled.push({ ...msg, conversation_subject: conv.subject });
+            }
+          }
+        } catch { /* skip */ }
+      }
+      setScheduledMessages(allScheduled);
+    } catch (err) {
+      console.error('Failed to load scheduled messages:', err);
+      setScheduledMessages([]);
+    } finally {
+      setScheduledMessagesLoading(false);
+    }
+  };
+
+  const handleScheduleEmail = async () => {
+    if (!selectedApp || !aiResult) return;
+    if (!recipientEmail.trim()) {
+      setError('Please enter a recipient email address.');
+      return;
+    }
+    if (!scheduledDateTime) {
+      setError('Please select a date and time for scheduling.');
+      return;
+    }
+    setAiLoading(true);
+    setError(null);
+    setSendSuccess(null);
+    try {
+      const htmlBody = aiResult.body_text
+        .split('\n')
+        .map((line: string) => line.trim() === '' ? '<br/>' : `<p>${line}</p>`)
+        .join('\n');
+
+      const draftBody: any = {
+        application_id: selectedApp.id,
+        to_email: recipientEmail.trim(),
+        subject: aiResult.subject,
+        body_text: aiResult.body_text,
+        body_html: htmlBody,
+      };
+      if (selectedResumeId && selectedResumeId !== 'none' && selectedResumeId !== 'auto') {
+        draftBody.resume_version_id = selectedResumeId;
+      }
+
+      // 1. Create Draft
+      const draftRes = await fetchApi('/email/draft', {
+        method: 'POST',
+        body: JSON.stringify(draftBody)
+      });
+      const messageId = draftRes.message?.id || draftRes.id;
+
+      // 2. Approve Draft
+      await fetchApi(`/email/${messageId}/approve`, { method: 'POST' });
+
+      // 3. Schedule
+      await fetchApi(`/email/${messageId}/schedule`, {
+        method: 'POST',
+        body: JSON.stringify({ scheduled_at: new Date(scheduledDateTime).toISOString() })
+      });
+
+      const formattedTime = new Date(scheduledDateTime).toLocaleString();
+      setSendSuccess(`Email scheduled for ${formattedTime}! ⏰`);
+      setShowSchedulePicker(false);
+      setScheduledDateTime('');
+      setTimeout(() => {
+        setIsEmailModalOpen(false);
+        setSendSuccess(null);
+      }, 2500);
+    } catch (err: any) {
+      console.error('Failed to schedule email:', err);
+      setError(err.message || 'Failed to schedule email.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleScheduleFollowUp = async () => {
+    if (!followUpResult || !followUpRecipient) return;
+    if (!followUpScheduledDateTime) {
+      setError('Please select a date and time for scheduling.');
+      return;
+    }
+    setFollowUpLoading(true);
+    setError(null);
+    try {
+      const conv = conversations.find((c: any) => c.id === followUpConversationId);
+      const appId = conv?.application_id;
+      if (!appId) throw new Error('No application linked to this conversation.');
+
+      const htmlBody = followUpResult.body_html || ('<p>' + followUpResult.body_text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br/>') + '</p>');
+
+      // 1. Create Draft
+      const draftRes = await fetchApi('/email/draft', {
+        method: 'POST',
+        body: JSON.stringify({
+          application_id: appId,
+          to_email: followUpRecipient.trim(),
+          subject: followUpResult.subject,
+          body_text: followUpResult.body_text,
+          body_html: htmlBody,
+        })
+      });
+      const messageId = draftRes.message?.id || draftRes.id;
+
+      // 2. Approve
+      await fetchApi(`/email/${messageId}/approve`, { method: 'POST' });
+
+      // 3. Schedule
+      await fetchApi(`/email/${messageId}/schedule`, {
+        method: 'POST',
+        body: JSON.stringify({ scheduled_at: new Date(followUpScheduledDateTime).toISOString() })
+      });
+
+      const formattedTime = new Date(followUpScheduledDateTime).toLocaleString();
+      setFollowUpSendSuccess(`Follow-up scheduled for ${formattedTime}! ⏰`);
+      setShowFollowUpSchedulePicker(false);
+      setFollowUpScheduledDateTime('');
+      setTimeout(() => {
+        setIsFollowUpModalOpen(false);
+        setFollowUpSendSuccess(null);
+        loadConversations();
+      }, 2500);
+    } catch (err: any) {
+      console.error('Failed to schedule follow-up:', err);
+      setError(err.message || 'Failed to schedule follow-up.');
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
+  const formatScheduledTime = (isoString: string) => {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const diffMins = Math.round(diffMs / 60000);
+    const diffHours = Math.round(diffMs / 3600000);
+    const diffDays = Math.round(diffMs / 86400000);
+
+    let relative = '';
+    if (diffMins < 1) relative = 'any moment';
+    else if (diffMins < 60) relative = `in ${diffMins}m`;
+    else if (diffHours < 24) relative = `in ${diffHours}h`;
+    else relative = `in ${diffDays}d`;
+
+    return {
+      absolute: date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }),
+      relative,
+    };
+  };
+
   const openFollowUpModal = (conversationId: string, recipientEmail: string) => {
     setFollowUpConversationId(conversationId);
     setFollowUpRecipient(recipientEmail);
@@ -296,6 +481,8 @@ export default function OutreachPage() {
     setFollowUpResult(null);
     setFollowUpEdited(false);
     setFollowUpSendSuccess(null);
+    setShowFollowUpSchedulePicker(false);
+    setFollowUpScheduledDateTime('');
     setIsFollowUpModalOpen(true);
   };
 
@@ -500,6 +687,19 @@ export default function OutreachPage() {
           >
             Follow-ups
           </button>
+          <button
+            onClick={() => { setActiveTab('scheduled'); loadScheduledMessages(); }}
+            className={`whitespace-nowrap pb-4 px-1 border-b-2 font-bold text-sm transition-colors ${
+              activeTab === 'scheduled'
+                ? 'border-violet-600 text-violet-700'
+                : 'border-transparent text-emerald-900/60 hover:text-emerald-950 hover:border-emerald-200'
+            }`}
+          >
+            <span className="flex items-center">
+              <Clock className="w-3.5 h-3.5 mr-1.5" />
+              Scheduled{scheduledMessages.length > 0 ? ` (${scheduledMessages.length})` : ''}
+            </span>
+          </button>
         </nav>
       </div>
 
@@ -639,6 +839,132 @@ export default function OutreachPage() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'scheduled' ? (
+          <div className="space-y-4">
+            {scheduledMessagesLoading ? (
+              <div className="flex h-32 items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-violet-600" />
+              </div>
+            ) : scheduledMessages.length === 0 ? (
+              <div className="text-center py-16">
+                <Clock className="w-12 h-12 text-violet-300 mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-emerald-950">No Scheduled Emails</h3>
+                <p className="text-sm text-emerald-900/60 mt-1">Use “Send Later” in the email composer to schedule emails for future delivery.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {scheduledMessages.map((msg: any) => {
+                  const timeInfo = formatScheduledTime(msg.scheduled_at);
+                  const isRescheduling = rescheduleId === msg.id;
+                  return (
+                    <div key={msg.id} className="glass-card p-5 flex flex-col justify-between border-l-4 border-l-violet-400">
+                      <div>
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="text-sm font-bold text-emerald-950 line-clamp-1 flex-1 mr-2">{msg.subject || 'Untitled'}</h4>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200 flex-shrink-0">
+                            <Clock className="w-3 h-3 mr-1" />
+                            {timeInfo.relative}
+                          </span>
+                        </div>
+                        <p className="text-xs text-emerald-800/70 mb-1 flex items-center">
+                          <Mail className="w-3 h-3 mr-1.5 flex-shrink-0" />
+                          {msg.to_email}
+                        </p>
+                        <p className="text-[11px] text-slate-500 flex items-center">
+                          <CalendarClock className="w-3 h-3 mr-1.5 flex-shrink-0" />
+                          {timeInfo.absolute}
+                        </p>
+                        {msg.conversation_subject && (
+                          <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">
+                            Thread: {msg.conversation_subject}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Inline reschedule picker */}
+                      {isRescheduling && (
+                        <div className="mt-3 bg-violet-50 border border-violet-200 rounded-xl p-3 space-y-2 animate-in slide-in-from-top-2 duration-200">
+                          <input
+                            type="datetime-local"
+                            value={rescheduleDateTime}
+                            onChange={(e) => setRescheduleDateTime(e.target.value)}
+                            min={getMinScheduleDateTime()}
+                            className="w-full bg-white border border-violet-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-colors"
+                          />
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => { setRescheduleId(null); setRescheduleDateTime(''); }}
+                              className="flex-1 py-1.5 text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!rescheduleDateTime) return;
+                                setScheduleActionLoading(msg.id);
+                                try {
+                                  await fetchApi(`/email/${msg.id}/reschedule`, {
+                                    method: 'POST',
+                                    body: JSON.stringify({ scheduled_at: new Date(rescheduleDateTime).toISOString() })
+                                  });
+                                  setRescheduleId(null);
+                                  setRescheduleDateTime('');
+                                  await loadScheduledMessages();
+                                } catch (err: any) {
+                                  setError(err.message || 'Failed to reschedule.');
+                                  setTimeout(() => setError(null), 3000);
+                                } finally {
+                                  setScheduleActionLoading(null);
+                                }
+                              }}
+                              disabled={!rescheduleDateTime || scheduleActionLoading === msg.id}
+                              className="flex-1 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50 flex justify-center items-center"
+                            >
+                              {scheduleActionLoading === msg.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Confirm'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex space-x-2 mt-3">
+                        <button
+                          onClick={() => {
+                            setRescheduleId(isRescheduling ? null : msg.id);
+                            setRescheduleDateTime('');
+                          }}
+                          disabled={scheduleActionLoading === msg.id}
+                          className="flex-1 py-2 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center disabled:opacity-50"
+                        >
+                          <CalendarClock className="w-3.5 h-3.5 mr-1.5" />
+                          Reschedule
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Cancel this scheduled email? It will return to approved status.')) return;
+                            setScheduleActionLoading(msg.id);
+                            try {
+                              await fetchApi(`/email/${msg.id}/cancel-schedule`, { method: 'POST' });
+                              setScheduledMessages(prev => prev.filter(m => m.id !== msg.id));
+                            } catch (err: any) {
+                              setError(err.message || 'Failed to cancel scheduled email.');
+                              setTimeout(() => setError(null), 3000);
+                            } finally {
+                              setScheduleActionLoading(null);
+                            }
+                          }}
+                          disabled={scheduleActionLoading === msg.id}
+                          className="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center disabled:opacity-50"
+                        >
+                          {scheduleActionLoading === msg.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5 mr-1.5" />}
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -808,7 +1134,7 @@ export default function OutreachPage() {
                       className="w-full bg-white border border-emerald-200/80 rounded-xl px-4 py-3 text-xs font-medium text-slate-900 leading-relaxed resize-y focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors"
                     />
                   </div>
-                  <div className="flex space-x-3">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => {
                         setAiResult(null);
@@ -834,9 +1160,50 @@ export default function OutreachPage() {
                       className="flex-1 btn-primary py-2.5 text-xs flex justify-center items-center"
                     >
                       {aiLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-                      Send Email
+                      Send Now
+                    </button>
+                    <button
+                      onClick={() => setShowSchedulePicker(!showSchedulePicker)}
+                      disabled={aiLoading}
+                      className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold transition-all flex justify-center items-center shadow-md shadow-violet-500/20 disabled:opacity-50"
+                    >
+                      <Clock className="w-4 h-4 mr-1.5" />
+                      Send Later
                     </button>
                   </div>
+
+                  {/* Schedule Picker */}
+                  {showSchedulePicker && (
+                    <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                      <div className="flex items-center space-x-2">
+                        <CalendarClock className="w-4 h-4 text-violet-600 flex-shrink-0" />
+                        <span className="text-xs font-bold text-violet-900">Schedule for later</span>
+                      </div>
+                      <input
+                        type="datetime-local"
+                        value={scheduledDateTime}
+                        onChange={(e) => setScheduledDateTime(e.target.value)}
+                        min={getMinScheduleDateTime()}
+                        className="w-full bg-white border border-violet-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-colors"
+                      />
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => { setShowSchedulePicker(false); setScheduledDateTime(''); }}
+                          className="flex-1 py-2 text-xs font-bold text-violet-700 bg-white hover:bg-violet-100 border border-violet-200 rounded-lg transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleScheduleEmail}
+                          disabled={aiLoading || !scheduledDateTime}
+                          className="flex-1 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-lg text-xs font-bold transition-all flex justify-center items-center disabled:opacity-50"
+                        >
+                          {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarClock className="w-3.5 h-3.5 mr-1" />}
+                          Schedule Send
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1013,7 +1380,7 @@ export default function OutreachPage() {
                   />
                 </div>
 
-                <div className="flex space-x-3">
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => {
                       setFollowUpResult(null);
@@ -1039,9 +1406,50 @@ export default function OutreachPage() {
                     className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition-all flex justify-center items-center shadow-md shadow-emerald-500/20 disabled:opacity-50"
                   >
                     {followUpLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-                    Send Follow-up
+                    Send Now
+                  </button>
+                  <button
+                    onClick={() => setShowFollowUpSchedulePicker(!showFollowUpSchedulePicker)}
+                    disabled={followUpLoading}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold transition-all flex justify-center items-center shadow-md shadow-violet-500/20 disabled:opacity-50"
+                  >
+                    <Clock className="w-4 h-4 mr-1.5" />
+                    Send Later
                   </button>
                 </div>
+
+                {/* Follow-up Schedule Picker */}
+                {showFollowUpSchedulePicker && (
+                  <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center space-x-2">
+                      <CalendarClock className="w-4 h-4 text-violet-600 flex-shrink-0" />
+                      <span className="text-xs font-bold text-violet-900">Schedule follow-up for later</span>
+                    </div>
+                    <input
+                      type="datetime-local"
+                      value={followUpScheduledDateTime}
+                      onChange={(e) => setFollowUpScheduledDateTime(e.target.value)}
+                      min={getMinScheduleDateTime()}
+                      className="w-full bg-white border border-violet-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-colors"
+                    />
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => { setShowFollowUpSchedulePicker(false); setFollowUpScheduledDateTime(''); }}
+                        className="flex-1 py-2 text-xs font-bold text-violet-700 bg-white hover:bg-violet-100 border border-violet-200 rounded-lg transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleScheduleFollowUp}
+                        disabled={followUpLoading || !followUpScheduledDateTime}
+                        className="flex-1 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-lg text-xs font-bold transition-all flex justify-center items-center disabled:opacity-50"
+                      >
+                        {followUpLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarClock className="w-3.5 h-3.5 mr-1" />}
+                        Schedule Send
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

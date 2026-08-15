@@ -13,6 +13,7 @@ from app.core.limiter import limiter
 from app.core.schemas import MessageResponse as GenericMessage
 from app.core.dependencies import get_current_active_user
 from app.database import get_db
+from app.email.models import MessageStatus
 from app.email.schemas import (
     ConversationResponse,
     CreateMessageRequest,
@@ -206,7 +207,7 @@ async def process_scheduled_emails(
 
     dispatched = []
     for msg in due_messages:
-        msg.status = "QUEUED"
+        msg.status = MessageStatus.QUEUED
         msg.scheduled_at = None
         await db.commit()
 
