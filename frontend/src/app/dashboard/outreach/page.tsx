@@ -40,6 +40,8 @@ export default function OutreachPage() {
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [emailTone, setEmailTone] = useState('professional');
   const [aiLoading, setAiLoading] = useState(false);
+  const [isSendingNow, setIsSendingNow] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
   const [aiResult, setAiResult] = useState<{subject: string, body_text: string} | null>(null);
   const [isEdited, setIsEdited] = useState(false);
 
@@ -61,6 +63,8 @@ export default function OutreachPage() {
   const [followUpConversationId, setFollowUpConversationId] = useState('');
   const [followUpNumber, setFollowUpNumber] = useState(1);
   const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [isSendingFollowUpNow, setIsSendingFollowUpNow] = useState(false);
+  const [isSchedulingFollowUp, setIsSchedulingFollowUp] = useState(false);
   const [followUpResult, setFollowUpResult] = useState<{subject: string, body_text: string, body_html?: string} | null>(null);
   const [followUpEdited, setFollowUpEdited] = useState(false);
   const [followUpRecipient, setFollowUpRecipient] = useState('');
@@ -183,7 +187,7 @@ export default function OutreachPage() {
       setError('Please enter a recipient email address (e.g. recruiter@company.com).');
       return;
     }
-    setAiLoading(true);
+    setIsSendingNow(true);
     setError(null);
     setSendSuccess(null);
     try {
@@ -228,7 +232,7 @@ export default function OutreachPage() {
       console.error('Failed to send email:', err);
       setError(err.message || 'Failed to send email. Check your SMTP settings in Profile.');
     } finally {
-      setAiLoading(false);
+      setIsSendingNow(false);
     }
   };
 
@@ -354,7 +358,7 @@ export default function OutreachPage() {
       setError('Please select a date and time for scheduling.');
       return;
     }
-    setAiLoading(true);
+    setIsScheduling(true);
     setError(null);
     setSendSuccess(null);
     try {
@@ -402,7 +406,7 @@ export default function OutreachPage() {
       console.error('Failed to schedule email:', err);
       setError(err.message || 'Failed to schedule email.');
     } finally {
-      setAiLoading(false);
+      setIsScheduling(false);
     }
   };
 
@@ -412,7 +416,7 @@ export default function OutreachPage() {
       setError('Please select a date and time for scheduling.');
       return;
     }
-    setFollowUpLoading(true);
+    setIsSchedulingFollowUp(true);
     setError(null);
     try {
       const conv = conversations.find((c: any) => c.id === followUpConversationId);
@@ -456,7 +460,7 @@ export default function OutreachPage() {
       console.error('Failed to schedule follow-up:', err);
       setError(err.message || 'Failed to schedule follow-up.');
     } finally {
-      setFollowUpLoading(false);
+      setIsSchedulingFollowUp(false);
     }
   };
 
@@ -522,7 +526,7 @@ export default function OutreachPage() {
 
   const handleSendFollowUp = async () => {
     if (!followUpResult || !followUpRecipient) return;
-    setFollowUpLoading(true);
+    setIsSendingFollowUpNow(true);
     try {
       // Find the application_id from the conversation
       const conv = conversations.find((c: any) => c.id === followUpConversationId);
@@ -560,7 +564,7 @@ export default function OutreachPage() {
       console.error('Failed to send follow-up:', err);
       setError(err.message || 'Failed to send follow-up.');
     } finally {
-      setFollowUpLoading(false);
+      setIsSendingFollowUpNow(false);
     }
   };
 
@@ -1162,18 +1166,22 @@ export default function OutreachPage() {
                     </button>
                     <button
                       onClick={handleSendEmail}
-                      disabled={aiLoading}
-                      className="flex-1 btn-primary py-2.5 text-xs flex justify-center items-center"
+                      disabled={isSendingNow || isScheduling || aiLoading}
+                      className="flex-1 btn-primary py-2.5 text-xs flex justify-center items-center disabled:opacity-50"
                     >
-                      {aiLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-                      Send Now
+                      {isSendingNow ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                      {isSendingNow ? 'Sending...' : 'Send Now'}
                     </button>
                     <button
                       onClick={() => setShowSchedulePicker(!showSchedulePicker)}
-                      disabled={aiLoading}
-                      className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold transition-all flex justify-center items-center shadow-md shadow-violet-500/20 disabled:opacity-50"
+                      disabled={isSendingNow || isScheduling || aiLoading}
+                      className={`flex-1 py-2.5 text-white rounded-xl text-xs font-bold transition-all flex justify-center items-center shadow-md shadow-violet-500/20 disabled:opacity-50 ${
+                        showSchedulePicker
+                          ? 'bg-violet-800 ring-2 ring-violet-400'
+                          : 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700'
+                      }`}
                     >
-                      <Clock className="w-4 h-4 mr-1.5" />
+                      <Clock className={`w-4 h-4 mr-1.5 ${isScheduling ? 'animate-spin' : ''}`} />
                       Send Later
                     </button>
                   </div>
@@ -1201,11 +1209,20 @@ export default function OutreachPage() {
                         </button>
                         <button
                           onClick={handleScheduleEmail}
-                          disabled={aiLoading || !scheduledDateTime}
+                          disabled={isScheduling || isSendingNow || !scheduledDateTime}
                           className="flex-1 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-lg text-xs font-bold transition-all flex justify-center items-center disabled:opacity-50"
                         >
-                          {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarClock className="w-3.5 h-3.5 mr-1" />}
-                          Schedule Send
+                          {isScheduling ? (
+                            <>
+                              <Clock className="w-3.5 h-3.5 mr-1.5 animate-spin text-white" />
+                              Scheduling...
+                            </>
+                          ) : (
+                            <>
+                              <CalendarClock className="w-3.5 h-3.5 mr-1" />
+                              Schedule Send
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -1408,18 +1425,22 @@ export default function OutreachPage() {
                   </button>
                   <button
                     onClick={handleSendFollowUp}
-                    disabled={followUpLoading}
+                    disabled={isSendingFollowUpNow || isSchedulingFollowUp || followUpLoading}
                     className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition-all flex justify-center items-center shadow-md shadow-emerald-500/20 disabled:opacity-50"
                   >
-                    {followUpLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-                    Send Now
+                    {isSendingFollowUpNow ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                    {isSendingFollowUpNow ? 'Sending...' : 'Send Now'}
                   </button>
                   <button
                     onClick={() => setShowFollowUpSchedulePicker(!showFollowUpSchedulePicker)}
-                    disabled={followUpLoading}
-                    className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold transition-all flex justify-center items-center shadow-md shadow-violet-500/20 disabled:opacity-50"
+                    disabled={isSendingFollowUpNow || isSchedulingFollowUp || followUpLoading}
+                    className={`flex-1 py-2.5 text-white rounded-xl text-xs font-bold transition-all flex justify-center items-center shadow-md shadow-violet-500/20 disabled:opacity-50 ${
+                      showFollowUpSchedulePicker
+                        ? 'bg-violet-800 ring-2 ring-violet-400'
+                        : 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700'
+                    }`}
                   >
-                    <Clock className="w-4 h-4 mr-1.5" />
+                    <Clock className={`w-4 h-4 mr-1.5 ${isSchedulingFollowUp ? 'animate-spin' : ''}`} />
                     Send Later
                   </button>
                 </div>
@@ -1447,11 +1468,20 @@ export default function OutreachPage() {
                       </button>
                       <button
                         onClick={handleScheduleFollowUp}
-                        disabled={followUpLoading || !followUpScheduledDateTime}
+                        disabled={isSchedulingFollowUp || isSendingFollowUpNow || !followUpScheduledDateTime}
                         className="flex-1 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-lg text-xs font-bold transition-all flex justify-center items-center disabled:opacity-50"
                       >
-                        {followUpLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarClock className="w-3.5 h-3.5 mr-1" />}
-                        Schedule Send
+                        {isSchedulingFollowUp ? (
+                          <>
+                            <Clock className="w-3.5 h-3.5 mr-1.5 animate-spin text-white" />
+                            Scheduling...
+                          </>
+                        ) : (
+                          <>
+                            <CalendarClock className="w-3.5 h-3.5 mr-1" />
+                            Schedule Send
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
