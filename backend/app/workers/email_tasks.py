@@ -222,7 +222,7 @@ async def _send_email_async(message_id: str) -> None:
                 f"rejecting email send (no application fallback)."
             )
             message.status = MessageStatus.FAILED
-            message.error = (
+            message.send_error = (
                 "Email not sent: You have not configured your email credentials. "
                 "Please go to Profile → Email Settings and add your SMTP / App Password "
                 "to enable outreach email delivery."
@@ -385,6 +385,25 @@ async def _send_email_async(message_id: str) -> None:
                 user_credentials.oauth_access_token = encrypt_credential(gmail_provider.access_token)
                 await db.commit()
                 logger.info("Persisted refreshed Gmail OAuth token after send")
+
+            # SMTP fallback: If Gmail OAuth failed, try SMTP before giving up
+            if not send_result.success and user_credentials.smtp_username and user_credentials.smtp_password:
+                logger.warning(
+                    f"Gmail OAuth failed ({send_result.error}), falling back to SMTP"
+                )
+                try:
+                    smtp_creds = SMTPCredentials(
+                        host=user_credentials.smtp_host or "smtp.gmail.com",
+                        port=user_credentials.smtp_port or 587,
+                        username=user_credentials.smtp_username,
+                        password=decrypt_credential(user_credentials.smtp_password),
+                    )
+                    send_result = await smtp_provider.send(email_msg, credentials=smtp_creds)
+                    if send_result.success:
+                        logger.info("SMTP fallback succeeded after Gmail OAuth failure")
+                except Exception as smtp_err:
+                    logger.warning(f"SMTP fallback also failed: {smtp_err}")
+
         elif "OUTLOOK" in provider_type and (user_credentials.oauth_access_token or user_credentials.oauth_refresh_token):
             from app.providers.email.outlook_oauth import OutlookOAuthProvider
             outlook_provider = OutlookOAuthProvider(

@@ -46,8 +46,21 @@ logger = logging.getLogger("ascendra")
 async def lifespan(app: FastAPI):
     from app.core.cache import init_redis, close_redis
     await init_redis()
+
+    # Start background scheduler for processing due scheduled emails
+    from app.workers.scheduler import start_email_scheduler
+    scheduler_task = start_email_scheduler()
+
     yield
+
+    # Cancel scheduler on shutdown
+    scheduler_task.cancel()
+    try:
+        await scheduler_task
+    except Exception:
+        pass
     await close_redis()
+
 
 app = FastAPI(
     title="Ascendra API",

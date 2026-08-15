@@ -205,20 +205,25 @@ async def process_scheduled_emails(
 
     due_messages = await email_service.get_due_scheduled(db=db)
 
+    # Collect IDs and batch-update statuses in a single transaction
     dispatched = []
     for msg in due_messages:
         msg.status = MessageStatus.QUEUED
         msg.scheduled_at = None
-        await db.commit()
-
-        import asyncio
-        from app.workers.email_tasks import _send_email_async
-        asyncio.create_task(_send_email_async(str(msg.id)))
-
         dispatched.append(str(msg.id))
+
+    if dispatched:
+        await db.commit()  # Single commit for all status changes
+
+    # Dispatch AFTER commit so _send_email_async sees QUEUED status
+    import asyncio
+    from app.workers.email_tasks import _send_email_async
+    for mid in dispatched:
+        asyncio.create_task(_send_email_async(mid))
 
     logger.info(f"Processed {len(dispatched)} scheduled emails")
     return {"dispatched": len(dispatched), "message_ids": dispatched}
+
 
 
 # ── Conversations ─────────────────────────────────────────────
