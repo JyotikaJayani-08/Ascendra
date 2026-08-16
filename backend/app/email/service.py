@@ -224,21 +224,43 @@ class EmailService:
         logger.info(f"Scheduled message cancelled: {message_id[:8]}")
         return message
 
-    async def get_due_scheduled(self, db: AsyncSession) -> list[Message]:
-        """Get all messages that are due for sending (scheduled_at <= now).
+    async def claim_and_dispatch_due(self, db: AsyncSession) -> list[str]:
+        """Atomically claim all due scheduled emails and dispatch them.
 
-        Called by the Supabase Edge Function via pg_cron.
+        Uses UPDATE ... FOR UPDATE SKIP LOCKED ... RETURNING to ensure
+        each message is claimed exactly once — even if pg_cron ticks overlap.
+
+        Returns list of claimed message IDs.
         """
+        import asyncio
         from datetime import datetime, timezone
+        from sqlalchemy import text
 
         now = datetime.now(timezone.utc)
+
         result = await db.execute(
-            select(Message).where(
-                Message.status == MessageStatus.SCHEDULED,
-                Message.scheduled_at <= now,
-            )
+            text("""
+                UPDATE messages
+                SET status = 'QUEUED', scheduled_at = NULL, updated_at = NOW()
+                WHERE id IN (
+                    SELECT id FROM messages
+                    WHERE status = 'SCHEDULED'
+                      AND scheduled_at <= :now
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id
+            """),
+            {"now": now},
         )
-        return list(result.scalars().all())
+        claimed_ids = [str(row[0]) for row in result.fetchall()]
+        await db.commit()
+
+        if claimed_ids:
+            from app.workers.email_tasks import _send_email_async
+            for mid in claimed_ids:
+                asyncio.create_task(_send_email_async(mid))
+
+        return claimed_ids
 
     async def edit_message(
         self,

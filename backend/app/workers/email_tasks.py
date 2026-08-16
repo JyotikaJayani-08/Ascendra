@@ -367,11 +367,16 @@ async def _send_email_async(message_id: str) -> None:
         )
 
         # Dispatch via configured provider type
+        # Each path is a standalone feature — SMTP (incl. Gmail app password),
+        # Gmail OAuth, and Outlook OAuth are independent choices, not fallbacks.
         from app.core.security import decrypt_credential
         provider_type = str(user_credentials.provider_type or "SMTP").upper()
 
-        if "GMAIL" in provider_type and (user_credentials.oauth_access_token or user_credentials.oauth_refresh_token):
+        if provider_type == "GMAIL_OAUTH":
             from app.providers.email.gmail_oauth import GmailOAuthProvider
+            # Decrypt the original token for later comparison
+            original_decrypted = decrypt_credential(user_credentials.oauth_access_token or "") if user_credentials.oauth_access_token else ""
+
             gmail_provider = GmailOAuthProvider(
                 access_token=user_credentials.oauth_access_token or "",
                 refresh_token=user_credentials.oauth_refresh_token,
@@ -379,32 +384,16 @@ async def _send_email_async(message_id: str) -> None:
                 client_secret=user_credentials.oauth_client_secret,
             )
             send_result = await gmail_provider.send(email_msg)
-            # Persist refreshed token if it changed during send
-            if gmail_provider.access_token and gmail_provider.access_token != decrypt_credential(user_credentials.oauth_access_token or ""):
+
+            # Always persist refreshed token if it changed — even on send failure,
+            # so the next attempt uses the fresh token instead of the expired one.
+            if gmail_provider.access_token and gmail_provider.access_token != original_decrypted:
                 from app.core.security import encrypt_credential
                 user_credentials.oauth_access_token = encrypt_credential(gmail_provider.access_token)
                 await db.commit()
-                logger.info("Persisted refreshed Gmail OAuth token after send")
+                logger.info("Persisted refreshed Gmail OAuth token")
 
-            # SMTP fallback: If Gmail OAuth failed, try SMTP before giving up
-            if not send_result.success and user_credentials.smtp_username and user_credentials.smtp_password:
-                logger.warning(
-                    f"Gmail OAuth failed ({send_result.error}), falling back to SMTP"
-                )
-                try:
-                    smtp_creds = SMTPCredentials(
-                        host=user_credentials.smtp_host or "smtp.gmail.com",
-                        port=user_credentials.smtp_port or 587,
-                        username=user_credentials.smtp_username,
-                        password=decrypt_credential(user_credentials.smtp_password),
-                    )
-                    send_result = await smtp_provider.send(email_msg, credentials=smtp_creds)
-                    if send_result.success:
-                        logger.info("SMTP fallback succeeded after Gmail OAuth failure")
-                except Exception as smtp_err:
-                    logger.warning(f"SMTP fallback also failed: {smtp_err}")
-
-        elif "OUTLOOK" in provider_type and (user_credentials.oauth_access_token or user_credentials.oauth_refresh_token):
+        elif provider_type == "OUTLOOK_OAUTH":
             from app.providers.email.outlook_oauth import OutlookOAuthProvider
             outlook_provider = OutlookOAuthProvider(
                 access_token=user_credentials.oauth_access_token or "",
@@ -413,8 +402,9 @@ async def _send_email_async(message_id: str) -> None:
                 client_secret=user_credentials.oauth_client_secret,
             )
             send_result = await outlook_provider.send(email_msg)
+
         else:
-            # Build SMTPCredentials from the full UserEmailConfig for SMTP path
+            # SMTP path — Gmail App Password, Outlook App Password, or any SMTP provider
             smtp_creds = SMTPCredentials(
                 host=user_credentials.smtp_host,
                 port=user_credentials.smtp_port,

@@ -69,19 +69,50 @@ class GmailOAuthProvider(EmailProvider):
         return None
 
     async def send(self, message: EmailMessage) -> SendResult:
-        """Send email via Gmail API, attempting token refresh if 401 is encountered."""
-        if not self.access_token and self.refresh_token:
-            await self.refresh_access_token()
+        """Send email via Gmail API with robust token refresh handling.
 
+        Flow:
+          1. If no access_token but refresh_token exists → refresh first
+          2. Try sending
+          3. If 401 → refresh token and retry once
+          4. self.access_token always reflects the latest token for caller to persist
+        """
+        # ── Step 1: Proactively refresh if we have no access token ────
+        if not self.access_token and self.refresh_token:
+            refreshed = await self.refresh_access_token()
+            if not refreshed:
+                return SendResult(
+                    success=False,
+                    error="Gmail OAuth: No access token and token refresh failed. "
+                          "Please re-authenticate Gmail in Profile → Email Settings.",
+                )
+
+        # ── Step 2: Attempt send ──────────────────────────────────────
         provider = GmailProvider(access_token=self.access_token)
         result = await provider.send(message)
 
-        # If unauthorized/expired token, attempt single refresh retry
-        if not result.success and ("401" in str(result.error) or "invalid_token" in str(result.error).lower()):
-            logger.info("Gmail OAuth token invalid or expired. Attempting token refresh...")
+        if result.success:
+            return result
+
+        # ── Step 3: If expired token (401), refresh and retry once ────
+        is_token_error = "401" in str(result.error) or "invalid_token" in str(result.error).lower()
+
+        if is_token_error and self.refresh_token:
+            logger.info("Gmail OAuth token expired. Refreshing and retrying...")
             new_token = await self.refresh_access_token()
             if new_token:
                 provider = GmailProvider(access_token=new_token)
                 result = await provider.send(message)
+                if result.success:
+                    logger.info("Gmail send succeeded after token refresh.")
+                    return result
+
+            # Refresh failed — give a clear actionable error
+            if not new_token:
+                return SendResult(
+                    success=False,
+                    error="Gmail OAuth: Access token expired and refresh failed. "
+                          "Please re-authenticate Gmail in Profile → Email Settings.",
+                )
 
         return result

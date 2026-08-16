@@ -13,7 +13,7 @@ from app.core.limiter import limiter
 from app.core.schemas import MessageResponse as GenericMessage
 from app.core.dependencies import get_current_active_user
 from app.database import get_db
-from app.email.models import MessageStatus
+
 from app.email.schemas import (
     ConversationResponse,
     CreateMessageRequest,
@@ -191,38 +191,23 @@ async def process_scheduled_emails(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Internal endpoint called by Supabase Edge Function (via pg_cron).
+    """Internal endpoint called by Supabase pg_cron to process due scheduled emails.
 
-    Finds all SCHEDULED messages that are due and dispatches them.
+    All claim + dispatch logic lives in email_service.claim_and_dispatch_due()
+    which uses FOR UPDATE SKIP LOCKED for exactly-once delivery.
     Secured via X-Internal-Secret header.
     """
     from app.config import settings
     secret = request.headers.get("X-Internal-Secret", "")
-    expected = settings.JWT_SECRET  # Reuse JWT secret as internal auth
+    expected = settings.JWT_SECRET
     if secret != expected:
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    due_messages = await email_service.get_due_scheduled(db=db)
+    claimed_ids = await email_service.claim_and_dispatch_due(db)
 
-    # Collect IDs and batch-update statuses in a single transaction
-    dispatched = []
-    for msg in due_messages:
-        msg.status = MessageStatus.QUEUED
-        msg.scheduled_at = None
-        dispatched.append(str(msg.id))
-
-    if dispatched:
-        await db.commit()  # Single commit for all status changes
-
-    # Dispatch AFTER commit so _send_email_async sees QUEUED status
-    import asyncio
-    from app.workers.email_tasks import _send_email_async
-    for mid in dispatched:
-        asyncio.create_task(_send_email_async(mid))
-
-    logger.info(f"Processed {len(dispatched)} scheduled emails")
-    return {"dispatched": len(dispatched), "message_ids": dispatched}
+    logger.info(f"pg_cron: dispatched {len(claimed_ids)} scheduled emails")
+    return {"dispatched": len(claimed_ids), "message_ids": claimed_ids}
 
 
 
